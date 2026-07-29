@@ -175,28 +175,6 @@ DHT.h
 
 ---
 
-# Folder Structure
-
-```
-Smart-Air-Pollution-Monitor/
-
-│
-├── Arduino_Code/
-│   └── SmartAirMonitor.ino
-│
-├── Images/
-│   ├── front.jpg
-│
-├── Schematic/
-│   ├── circuit.pdf
-│   └── schematic.kicad_sch
-│
-├── README.md
-└── LICENSE
-```
-
----
-
 # Future Improvements
 
 * Wi-Fi Connectivity (ESP8266/ESP32)
