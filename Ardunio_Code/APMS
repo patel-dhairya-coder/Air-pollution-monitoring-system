@@ -1,0 +1,311 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <DHT.h>
+
+#define DHTPIN 8
+#define DHTTYPE DHT22
+
+#define MQ135_PIN A0
+#define MQ2_PIN   A1
+#define MQ7_PIN   A2
+#define DUST_PIN  A3
+
+#define BUTTON_PIN 2
+
+#define DUST_LED 9
+#define BUZZER_PIN 10
+
+#define RED_LED   13
+#define GREEN_LED 11
+#define BLUE_LED  12
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+DHT dht(DHTPIN, DHTTYPE);
+
+int page = 0;
+bool lastButtonState = HIGH;
+
+// --- Custom Characters for Dino Animation ---
+byte dino1[8] = {
+  B00111,
+  B00101,
+  B00111,
+  B10110,
+  B11111,
+  B01110,
+  B01010,
+  B01000
+};
+
+byte dino2[8] = {
+  B00111,
+  B00101,
+  B00111,
+  B10110,
+  B11111,
+  B01110,
+  B01010,
+  B00010
+};
+
+// Air Quality Classification
+String getAirQuality(int mq135, int dust)
+{
+  if (mq135 < 200 && dust < 250)
+    return "GOOD";
+
+  else if (mq135 < 400 && dust < 400)
+    return "MODERATE";
+
+  else if (mq135 < 600 && dust < 600)
+    return "POOR";
+
+  else
+    return "HAZARDOUS";
+}
+
+// RGB LED + Buzzer Control
+void updateAlert(String quality)
+{
+  if (quality == "GOOD")
+  {
+    digitalWrite(RED_LED, LOW);
+    digitalWrite(GREEN_LED, HIGH);
+    digitalWrite(BLUE_LED, LOW);
+
+    noTone(BUZZER_PIN);
+  }
+
+  else if (quality == "MODERATE")
+  {
+    digitalWrite(RED_LED, LOW);
+    digitalWrite(GREEN_LED, LOW);
+    digitalWrite(BLUE_LED, HIGH);
+
+    noTone(BUZZER_PIN);
+  }
+
+  else if (quality == "POOR")
+  {
+    digitalWrite(RED_LED, HIGH);
+    digitalWrite(GREEN_LED, LOW);
+    digitalWrite(BLUE_LED, LOW);
+
+    tone(BUZZER_PIN, 1000);
+    delay(100);
+    noTone(BUZZER_PIN);
+  }
+
+  else
+  {
+    digitalWrite(RED_LED, HIGH);
+    digitalWrite(GREEN_LED, LOW);
+    digitalWrite(BLUE_LED, LOW);
+
+    tone(BUZZER_PIN, 2000);
+  }
+}
+
+void printValue(int value)
+{
+  if (value < 10)
+    lcd.print("00");
+  else if (value < 100)
+    lcd.print("0");
+
+  lcd.print(value);
+}
+
+void setup()
+{
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+
+  pinMode(DUST_LED, OUTPUT);
+
+  pinMode(BUZZER_PIN, OUTPUT);
+
+  pinMode(RED_LED, OUTPUT);
+  pinMode(GREEN_LED, OUTPUT);
+  pinMode(BLUE_LED, OUTPUT);
+
+  lcd.init();
+  lcd.backlight();
+  
+  // Load the custom characters into LCD memory
+  lcd.createChar(0, dino1);
+  lcd.createChar(1, dino2);
+
+  dht.begin();
+
+  Serial.begin(9600);
+
+  lcd.clear();
+
+  // ---------- Warmup Animation with Dino ----------
+  lcd.setCursor(0, 0);
+  lcd.print("Warming Sens"); // Leave room for the countdown on the right
+
+  // 200 iterations at 500ms each = 100 seconds
+  for(int i = 200; i >= 0; i--) 
+  {
+    int secondsLeft = i / 2;
+
+    // --- Update Countdown ---
+    lcd.setCursor(12, 0); 
+    
+    // Formatting to clear old digits as it counts down
+    if (secondsLeft < 100) lcd.print(" ");
+    if (secondsLeft < 10) lcd.print(" ");
+    lcd.print(secondsLeft);
+    lcd.print("s");
+
+    // --- Update Dino Animation ---
+    lcd.setCursor(0, 1); 
+    
+    // Toggle legs
+    if (i % 2 == 0) {
+      lcd.write(byte(0)); 
+    } else {
+      lcd.write(byte(1)); 
+    }
+    
+    lcd.print(" Please Wait.. "); // Text next to the running dino
+
+    delay(500);
+  }
+
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("System Ready");
+
+  lcd.setCursor(0,1);
+  lcd.print("Starting...");
+
+  delay(2000);
+  lcd.clear();
+}
+
+void loop()
+{
+  // Page Button
+  bool buttonState = digitalRead(BUTTON_PIN);
+
+  if (buttonState == LOW && lastButtonState == HIGH)
+  {
+    page++;
+
+    if (page > 5)
+      page = 0;
+
+    lcd.clear();
+    delay(250);
+  }
+
+  lastButtonState = buttonState;
+
+  // Read DHT22
+  float temp = dht.readTemperature();
+  float hum = dht.readHumidity();
+
+  // Read MQ Sensors
+  int mq135 = analogRead(MQ135_PIN);
+  int mq2 = analogRead(MQ2_PIN);
+  int mq7 = analogRead(MQ7_PIN);
+
+  // Read Dust Sensor
+  digitalWrite(DUST_LED, LOW);
+  delayMicroseconds(280);
+
+  int dustRaw = analogRead(DUST_PIN);
+
+  delayMicroseconds(40);
+  digitalWrite(DUST_LED, HIGH);
+  delayMicroseconds(9680);
+
+  // Air Quality
+  String airQuality = getAirQuality(mq135, dustRaw);
+
+  // Update RGB + Buzzer
+  updateAlert(airQuality);
+
+  // Serial Monitor
+  Serial.print("Temp: ");
+  Serial.print(temp);
+
+  Serial.print("  Hum: ");
+  Serial.print(hum);
+
+  Serial.print("  MQ2: ");
+  Serial.print(mq2);
+
+  Serial.print("  MQ7: ");
+  Serial.print(mq7);
+
+  Serial.print("  MQ135: ");
+  Serial.print(mq135);
+
+  Serial.print("  Dust: ");
+  Serial.print(dustRaw);
+
+  Serial.print("  AQ: ");
+  Serial.println(airQuality);
+
+  // LCD Pages
+  switch (page)
+  {
+    case 0:
+      lcd.setCursor(0, 0);
+      lcd.print("Temp:");
+      lcd.print(temp, 1);
+      lcd.print((char)223);
+      lcd.print("C");
+
+      lcd.setCursor(0, 1);
+      lcd.print("Hum:");
+      lcd.print(hum, 1);
+      lcd.print("%");
+      break;
+
+    case 1:
+      lcd.setCursor(0, 0);
+      lcd.print("MQ2 Value:");
+
+      lcd.setCursor(0, 1);
+      printValue(mq2);
+      break;
+
+    case 2:
+      lcd.setCursor(0, 0);
+      lcd.print("MQ7 Value:");
+
+      lcd.setCursor(0, 1);
+      printValue(mq7);
+      break;
+
+    case 3:
+      lcd.setCursor(0, 0);
+      lcd.print("MQ135 Value:");
+
+      lcd.setCursor(0, 1);
+      printValue(mq135);
+      break;
+
+    case 4:
+      lcd.setCursor(0, 0);
+      lcd.print("Dust Value:");
+
+      lcd.setCursor(0, 1);
+      printValue(dustRaw);
+      break;
+
+    case 5:
+      lcd.setCursor(0, 0);
+      lcd.print("Air Quality:");
+
+      lcd.setCursor(0, 1);
+      lcd.print(airQuality);
+      break;
+  }
+
+  delay(500);
+}
